@@ -1,0 +1,158 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "AWS CloudFormation Template for setting up production OPENVPN Access Server",
+  "Metadata" : {
+    "AWS::CloudFormation::Interface" : {
+      "ParameterGroups" : [
+        {
+          "Label" : { "default" : "OpenVPN instance configuration parameters" },
+          "Parameters" : [ "KeyPair", "ImageID", "TechSpec" ]
+        }
+      ],
+      "ParameterLabels" : {
+        "KeyPair" : { "default" : "Enter name of default key pair name" },
+        "ImageID" : { "default" : "Enter image ID for installation" },
+        "TechSpec" : { "default" : "Enter size of the instance" }
+      }
+    }
+  },
+  "Parameters": {
+    "KeyPair": {
+      "Default": "hellfire",
+      "Description": "Default key pair for SSH access",
+      "Type": "String",
+      "NoEcho": "false"
+    },
+    "ImageID": {
+      "Default": "ami-07a8d85046c8ecc99",
+      "Description": "AMI to install on the instance",
+      "Type": "String",
+      "NoEcho": "false"
+    },
+    "TechSpec": {
+      "Default": "t2.nano",
+      "Description": "Set the size of the instance",
+      "Type": "String",
+      "NoEcho": "false"
+    }
+  },
+  "Resources" : {
+    "OpenVPNproductionLaunchConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "AssociatePublicIpAddress" : "true",
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+              "DeleteOnTermination": true,
+              "VolumeSize": 80,
+              "VolumeType": "gp2"
+            }
+          }
+        ],
+        "KeyName": { "Ref" : "KeyPair" },
+        "ImageId": { "Ref" : "ImageID" },
+        "InstanceType": { "Ref" : "TechSpec" },
+        "SecurityGroups": [
+          {
+            "Ref": "OpenVPNProductionSecurityGroup"
+          }
+        ]
+      },
+      "DependsOn": [
+        "OpenVPNProductionSecurityGroup"
+      ]
+    },
+    "OpenVPNAutoScaleGroup" : {
+      "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "VPCZoneIdentifier": [ {"Fn::ImportValue" : "VPC-PROD-PublicSubnet1" }, {"Fn::ImportValue" : "VPC-PROD-PublicSubnet2"}],
+        "LaunchConfigurationName" : { "Ref" : "OpenVPNproductionLaunchConfig" },
+        "MinSize" : "1",
+        "MaxSize" : "1",
+        "Tags" : [
+          {
+            "Key" : "Name",
+            "Value" : "OpenVPN-Prod",
+            "PropagateAtLaunch" : "true"
+          }
+        ],
+      }
+    },
+    "OpenVPNProductionSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "OpenVPN Security Group",
+        "VpcId": {"Fn::ImportValue" : "VPC-PROD-VPCID"},
+        "SecurityGroupIngress": [
+          {
+            "Description": "OpenVPN connection",
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "Description": "OpenVPN portal",
+            "IpProtocol": "tcp",
+            "FromPort": "443",
+            "ToPort": "443",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "Description": "OpenVPN portal",
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "Description": "OpenVPN portal",
+            "IpProtocol": "udp",
+            "FromPort": "1194",
+            "ToPort": "1194",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "Description": "OpenVPN portal",
+            "IpProtocol": "tcp",
+            "FromPort": "943",
+            "ToPort": "943",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "Description": "OpenVPN portal",
+            "CidrIp": "0.0.0.0/0",
+            "FromPort": 443,
+            "ToPort": 443,
+            "IpProtocol": "tcp"
+          },
+          {
+            "Description": "OpenVPN portal",
+            "CidrIp": "0.0.0.0/0",
+            "FromPort": 1194,
+            "ToPort": 1194,
+            "IpProtocol": "udp"
+          },
+          {
+            "Description": "system updates",
+            "CidrIp": "0.0.0.0/0",
+            "FromPort": 943,
+            "ToPort": 943,
+            "IpProtocol": "udp"
+          },
+          {
+            "Description": "VPC communication",
+            "CidrIp": "10.0.0.0/16",
+            "FromPort": 22,
+            "ToPort": 22,
+            "IpProtocol": "tcp"
+          }
+        ]
+      }
+    }
+  }
+}
